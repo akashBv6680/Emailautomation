@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 
 from email.message import EmailMessage
+from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
 from sklearn.metrics import accuracy_score, r2_score
@@ -166,11 +167,6 @@ st.title("🤖 Multi-Agent AutoML System with Email Intelligence")
 
 uploaded_file = st.file_uploader("📁 Upload CSV Dataset", type="csv")
 if uploaded_file:
-    # Clean up previous PDF files
-    for f in os.listdir():
-        if f.endswith(".pdf") and ("hist_" in f or "box_" in f or "bar_" in f or "pie_" in f or "eda_" in f):
-            os.remove(f)
-
     df = pd.read_csv(uploaded_file)
     st.subheader("📊 Dataset Preview")
     st.dataframe(df.head())
@@ -180,57 +176,55 @@ if uploaded_file:
     st.write("Missing Values:")
     st.write(df.isnull().sum())
 
-    all_visuals = []
+    # Start writing all plots into a single PDF
+    pdf_report_path = "eda_report.pdf"
+    with PdfPages(pdf_report_path) as pdf:
 
-    fig, ax = plt.subplots()
-    sns.heatmap(df.isnull(), cbar=False, cmap="viridis", ax=ax)
-    plt.title("Missing Data Visualization")
-    plt.tight_layout()
-    plt.savefig("eda_missing.pdf")
-    all_visuals.append("eda_missing.pdf")
-    st.pyplot(fig)
+        fig, ax = plt.subplots()
+        sns.heatmap(df.isnull(), cbar=False, cmap="viridis", ax=ax)
+        plt.title("Missing Data Visualization")
+        plt.tight_layout()
+        pdf.savefig(fig)
+        st.pyplot(fig)
 
-    st.subheader("📈 Client-Friendly Visual Insights")
-    num_cols = df.select_dtypes(include=np.number).columns
-    cat_cols = df.select_dtypes(include='object').columns
+        st.subheader("📈 Client-Friendly Visual Insights")
+        num_cols = df.select_dtypes(include=np.number).columns
+        cat_cols = df.select_dtypes(include='object').columns
 
-    if not num_cols.empty:
-        st.markdown("### 🔢 Numeric Feature Distributions")
-        for col in num_cols:
-            fig, ax = plt.subplots()
-            df[col].hist(ax=ax, bins=20, color='skyblue', edgecolor='black')
-            ax.set_title(f"Histogram of {col}")
-            plt.savefig(f"hist_{col}.pdf")
-            all_visuals.append(f"hist_{col}.pdf")
-            st.pyplot(fig)
+        if not num_cols.empty:
+            st.markdown("### 🔢 Numeric Feature Distributions")
+            for col in num_cols:
+                fig, ax = plt.subplots()
+                df[col].hist(ax=ax, bins=20, color='skyblue', edgecolor='black')
+                ax.set_title(f"Histogram of {col}")
+                pdf.savefig(fig)
+                st.pyplot(fig)
 
-        st.markdown("### 🧮 Box Plots (Outlier Detection)")
-        for col in num_cols:
-            fig, ax = plt.subplots()
-            sns.boxplot(data=df, x=col, ax=ax, color='lightcoral')
-            ax.set_title(f"Box Plot of {col}")
-            plt.savefig(f"box_{col}.pdf")
-            all_visuals.append(f"box_{col}.pdf")
-            st.pyplot(fig)
+            st.markdown("### 🧮 Box Plots (Outlier Detection)")
+            for col in num_cols:
+                fig, ax = plt.subplots()
+                sns.boxplot(data=df, x=col, ax=ax, color='lightcoral')
+                ax.set_title(f"Box Plot of {col}")
+                pdf.savefig(fig)
+                st.pyplot(fig)
 
-    if not cat_cols.empty:
-        st.markdown("### 🧾 Categorical Feature Breakdown")
-        for col in cat_cols:
-            fig, ax = plt.subplots()
-            df[col].value_counts().plot(kind='bar', ax=ax, color='lightgreen')
-            ax.set_title(f"Bar Chart of {col}")
-            plt.savefig(f"bar_{col}.pdf")
-            all_visuals.append(f"bar_{col}.pdf")
-            st.pyplot(fig)
+        if not cat_cols.empty:
+            st.markdown("### 🧾 Categorical Feature Breakdown")
+            for col in cat_cols:
+                fig, ax = plt.subplots()
+                df[col].value_counts().plot(kind='bar', ax=ax, color='lightgreen')
+                ax.set_title(f"Bar Chart of {col}")
+                pdf.savefig(fig)
+                st.pyplot(fig)
 
-            fig, ax = plt.subplots()
-            df[col].value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90)
-            ax.set_ylabel("")
-            ax.set_title(f"Pie Chart of {col}")
-            plt.savefig(f"pie_{col}.pdf")
-            all_visuals.append(f"pie_{col}.pdf")
-            st.pyplot(fig)
+                fig, ax = plt.subplots()
+                df[col].value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90)
+                ax.set_ylabel("")
+                ax.set_title(f"Pie Chart of {col}")
+                pdf.savefig(fig)
+                st.pyplot(fig)
 
+    # Email sending condition
     problem_detected = df.isnull().sum().any() or df.select_dtypes(include=np.number).apply(lambda x: ((x - x.mean())/x.std()).abs().gt(3).sum()).sum() > 0
 
     if problem_detected and client_email:
@@ -240,15 +234,15 @@ Dear Client,
 Our system has completed the initial analysis of your dataset. Here are the key observations:
 
 - ❗ Potential data quality issues found (missing values or outliers)
-- 🧹 Visuals attached for your review (see PDF insights)
+- 🧹 A full EDA PDF report is attached for your review.
 
 Please confirm if you'd like us to proceed with data cleaning and model training.
 
 Regards,
 Akash
         """
-        send_email_report("Initial Data Quality Report", eda_summary, client_email, all_visuals)
-        st.warning("Initial report emailed to client for confirmation before continuing.")
+        send_email_report("Initial Data Quality Report", eda_summary, client_email, [pdf_report_path])
+        st.warning("Initial EDA report sent to client for confirmation.")
 
         proceed = st.checkbox("✅ Client confirmed. Proceed with model training?")
         if proceed:
