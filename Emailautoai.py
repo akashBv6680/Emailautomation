@@ -1,3 +1,5 @@
+# ✅ Full Agentic + Multi-Agent AutoML System with Chat + EDA Email Notifications with AI Insight + Single PDF
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -16,26 +18,22 @@ from sklearn.metrics import accuracy_score, r2_score
 from sklearn.pipeline import make_pipeline
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet, LogisticRegression
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
-from sklearn.ensemble import (
-    RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor,
-    RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier, AdaBoostClassifier, AdaBoostRegressor
-)
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier, AdaBoostClassifier, AdaBoostRegressor
 from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
 from sklearn.svm import SVR, SVC
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, ComplementNB
 from imblearn.over_sampling import SMOTE
 import xgboost as xgb
 
-
 # === Together AI ===
 together_api_keys = [
-    "tgp_v1_ecSsk1__FlO2mB_gAaaP2i-Affa6Dv8OCVngkWzBJUY",
-    "tgp_v1_4hJBRX0XDlwnw_hhUnhP0e_lpI-u92Xhnqny2QIDAIM"
+    "your_api_key_1",
+    "your_api_key_2"
 ]
 
 client_email = st.sidebar.text_input("Enter Client Email")
 
-# === AI Prompt Functions ===
 def ask_agent(prompt, model, key=0):
     response = requests.post(
         "https://api.together.xyz/v1/chat/completions",
@@ -52,10 +50,6 @@ def ask_agent(prompt, model, key=0):
 def ask_data_scientist_agent(prompt):
     return ask_agent(f"[DATA SCIENTIST] {prompt}", "mistralai/Mistral-7B-Instruct-v0.1", key=0)
 
-def ask_ml_engineer_agent(prompt):
-    return ask_agent(f"[ML ENGINEER] {prompt}", "mistralai/Mistral-7B-Instruct-v0.1", key=1)
-
-# === Email Notification ===
 def send_email_report(subject, body, to, attachment_paths=None):
     msg = EmailMessage()
     msg['Subject'] = subject
@@ -73,7 +67,6 @@ def send_email_report(subject, body, to, attachment_paths=None):
         smtp.login(st.secrets["EMAIL_ADDRESS"], st.secrets["EMAIL_PASSWORD"])
         smtp.send_message(msg)
 
-# === Agent Class ===
 class AutoMLAgent:
     def __init__(self, X, y):
         self.X_raw = X.copy()
@@ -126,7 +119,6 @@ class AutoMLAgent:
     def run(self):
         for test_size in [0.1, 0.2, 0.3]:
             X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, test_size=test_size, random_state=42)
-
             if self.classification and len(np.unique(y_train)) > 2:
                 sampler = SMOTE()
                 X_train, y_train = sampler.fit_resample(X_train, y_train)
@@ -139,14 +131,12 @@ class AutoMLAgent:
                     model.fit(X_train, y_train)
                     preds = model.predict(X_test)
                     score = accuracy_score(y_test, preds) if self.classification else r2_score(y_test, preds)
-
                     info = {
                         "Model": name,
                         "Score": round(score, 4),
                         "Test Size": test_size,
                         "Type": "Classification" if self.classification else "Regression"
                     }
-
                     self.results.append(info)
                     if score > self.best_score:
                         self.best_score = score
@@ -161,7 +151,6 @@ class AutoMLAgent:
         with open("best_model.pkl", "wb") as f:
             pickle.dump(self.best_model, f)
 
-# === Streamlit UI ===
 st.set_page_config(page_title="Agentic AutoML AI", layout="wide")
 st.title("🤖 Multi-Agent AutoML System with Email Intelligence")
 
@@ -171,23 +160,29 @@ if uploaded_file:
     st.subheader("📊 Dataset Preview")
     st.dataframe(df.head())
 
-    st.subheader("📉 Basic EDA")
-    st.write(df.describe())
-    st.write("Missing Values:")
-    st.write(df.isnull().sum())
-
-    # Start writing all plots into a single PDF
     pdf_report_path = "eda_report.pdf"
     with PdfPages(pdf_report_path) as pdf:
 
+        st.subheader("📉 Basic EDA")
+        st.write(df.describe())
+        st.write("Missing Values:")
+        st.write(df.isnull().sum())
+
         fig, ax = plt.subplots()
         sns.heatmap(df.isnull(), cbar=False, cmap="viridis", ax=ax)
-        plt.title("Missing Data Visualization")
-        plt.tight_layout()
+        ax.set_title("Missing Data Visualization")
         pdf.savefig(fig)
-        st.pyplot(fig)
 
-        st.subheader("📈 Client-Friendly Visual Insights")
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            st.pyplot(fig)
+        with col2:
+            summary = ask_data_scientist_agent(
+                f"This is a missing value heatmap. Summary of dataset:\n{df.isnull().sum().to_string()}"
+            )
+            st.markdown("### 🧠 AI Insight on Missing Values")
+            st.write(summary)
+
         num_cols = df.select_dtypes(include=np.number).columns
         cat_cols = df.select_dtypes(include='object').columns
 
@@ -198,7 +193,15 @@ if uploaded_file:
                 df[col].hist(ax=ax, bins=20, color='skyblue', edgecolor='black')
                 ax.set_title(f"Histogram of {col}")
                 pdf.savefig(fig)
-                st.pyplot(fig)
+                col1, col2 = st.columns([2, 3])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    summary = ask_data_scientist_agent(
+                        f"Analyze this histogram for '{col}'.\nStatistics:\n{df[col].describe()}"
+                    )
+                    st.markdown(f"### 🧠 AI Insight on {col}")
+                    st.write(summary)
 
             st.markdown("### 🧮 Box Plots (Outlier Detection)")
             for col in num_cols:
@@ -206,74 +209,58 @@ if uploaded_file:
                 sns.boxplot(data=df, x=col, ax=ax, color='lightcoral')
                 ax.set_title(f"Box Plot of {col}")
                 pdf.savefig(fig)
-                st.pyplot(fig)
+                col1, col2 = st.columns([2, 3])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    summary = ask_data_scientist_agent(
+                        f"Analyze outliers for '{col}' using this boxplot.\nStats:\n{df[col].describe()}"
+                    )
+                    st.markdown(f"### 🧠 AI Insight on {col} (Outliers)")
+                    st.write(summary)
 
         if not cat_cols.empty:
-            st.markdown("### 🧾 Categorical Feature Breakdown")
+            st.markdown("### 🗾 Categorical Feature Breakdown")
             for col in cat_cols:
                 fig, ax = plt.subplots()
                 df[col].value_counts().plot(kind='bar', ax=ax, color='lightgreen')
                 ax.set_title(f"Bar Chart of {col}")
                 pdf.savefig(fig)
-                st.pyplot(fig)
+                col1, col2 = st.columns([2, 3])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    summary = ask_data_scientist_agent(
+                        f"Analyze the frequency distribution of '{col}'.\nCounts:\n{df[col].value_counts()}"
+                    )
+                    st.markdown(f"### 🧠 AI Insight on {col} (Bar Chart)")
+                    st.write(summary)
 
                 fig, ax = plt.subplots()
                 df[col].value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90)
                 ax.set_ylabel("")
                 ax.set_title(f"Pie Chart of {col}")
                 pdf.savefig(fig)
-                st.pyplot(fig)
+                col1, col2 = st.columns([2, 3])
+                with col1:
+                    st.pyplot(fig)
+                with col2:
+                    summary = ask_data_scientist_agent(
+                        f"Interpret the pie chart for '{col}' category distribution."
+                    )
+                    st.markdown(f"### 🧠 AI Insight on {col} (Pie Chart)")
+                    st.write(summary)
 
-    # Email sending condition
-    problem_detected = df.isnull().sum().any() or df.select_dtypes(include=np.number).apply(lambda x: ((x - x.mean())/x.std()).abs().gt(3).sum()).sum() > 0
-
-    if problem_detected and client_email:
+    if client_email:
         eda_summary = """
 Dear Client,
 
-Our system has completed the initial analysis of your dataset. Here are the key observations:
+Our system has completed the initial EDA analysis. The full PDF report is attached.
 
-- ❗ Potential data quality issues found (missing values or outliers)
-- 🧹 A full EDA PDF report is attached for your review.
-
-Please confirm if you'd like us to proceed with data cleaning and model training.
+Please confirm if you'd like us to proceed with model training.
 
 Regards,
 Akash
         """
-        send_email_report("Initial Data Quality Report", eda_summary, client_email, [pdf_report_path])
-        st.warning("Initial EDA report sent to client for confirmation.")
-
-        proceed = st.checkbox("✅ Client confirmed. Proceed with model training?")
-        if proceed:
-            target = st.selectbox("🎯 Select Target Variable", df.columns)
-            if target:
-                X = df.drop(columns=[target])
-                y = df[target]
-
-                agent = AutoMLAgent(X, y)
-                results_df, best_info = agent.run()
-
-                st.subheader("🏆 Model Leaderboard")
-                st.dataframe(results_df)
-
-                agent.save_best_model()
-                st.success(f"Best Model: {best_info['Model']} with score: {best_info['Score']}")
-
-                model_summary = f"""
-Dear Client,
-
-The AutoML process is complete. Here are the results:
-
-✅ Best Model: {best_info['Model']}
-📈 Score: {best_info['Score']}
-📊 Type: {best_info['Type']}
-🔎 Test Size: {best_info['Test Size']}
-
-Thank you for using our AI service.
-
-Regards,
-Akash
-"""
-                send_email_report("Final AutoML Model Report", model_summary, client_email)
-                st.info("📬 Final report emailed to client.")
+        send_email_report("Initial EDA PDF Report", eda_summary, client_email, [pdf_report_path])
+        st.info("📧 PDF EDA report emailed to client.")
