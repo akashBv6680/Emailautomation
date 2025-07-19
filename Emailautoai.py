@@ -1,5 +1,4 @@
-# ✅ Full Agentic + Multi-Agent AutoML System with Chat + EDA Email Notifications + PDF with AI Insights
-
+# === Required Imports (same as before) ===
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -25,7 +24,7 @@ from imblearn.over_sampling import SMOTE
 from matplotlib.backends.backend_pdf import PdfPages
 import xgboost as xgb
 
-# === Together AI ===
+# === Together AI Keys ===
 together_api_keys = [
     "tgp_v1_ecSsk1__FlO2mB_gAaaP2i-Affa6Dv8OCVngkWzBJUY",
     "tgp_v1_4hJBRX0XDlwnw_hhUnhP0e_lpI-u92Xhnqny2QIDAIM"
@@ -224,13 +223,24 @@ if uploaded_file:
             insights.append(f"{col} Pie Chart Insight:\n" + insight)
             st.markdown(f"**{col} Pie Chart Insight:** {insight}")
 
-        # Add all insights as a conclusion page in the PDF
+        # Add insights summary page to PDF
         fig, ax = plt.subplots(figsize=(8.5, 11))
         ax.axis('off')
         full_insight_text = "\n\n".join(insights)
         ax.text(0.01, 0.99, "AI Insights Summary (Simple English):\n\n" + full_insight_text, fontsize=10, va='top', wrap=True)
         pdf.savefig(fig)
         plt.close()
+
+    # === Display AI Insights on Right Side ===
+    st.subheader("🧠 AI Insights Summary")
+    col1, col2 = st.columns([2, 3])
+    with col2:
+        for insight in insights:
+            st.markdown(f"📝 {insight}")
+
+    # Optional PDF download
+    with open(pdf_path, "rb") as f:
+        st.download_button("📥 Download Full AI Insights Report (PDF)", f, file_name="EDA_AI_Insights_Report.pdf")
 
     problem_detected = df.isnull().sum().any() or df.select_dtypes(include=np.number).apply(lambda x: ((x - x.mean())/x.std()).abs().gt(3).sum()).sum() > 0
 
@@ -282,4 +292,4 @@ Thank you for using our AI service.
 Regards,
 Akash
 """
-                send_email_report("Final AutoML Model Report", model_summary, client_email)
+                send_email_report("Final AutoML Model Report", model_summary, client_email, [pdf_path])
