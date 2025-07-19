@@ -28,8 +28,8 @@ import xgboost as xgb
 
 # === Together AI ===
 together_api_keys = [
-    "your_api_key_1",
-    "your_api_key_2"
+    "tgp_v1_ecSsk1__FlO2mB_gAaaP2i-Affa6Dv8OCVngkWzBJUY",
+    "tgp_v1_4hJBRX0XDlwnw_hhUnhP0e_lpI-u92Xhnqny2QIDAIM"
 ]
 
 client_email = st.sidebar.text_input("Enter Client Email")
