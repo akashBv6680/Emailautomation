@@ -173,7 +173,8 @@ if uploaded_file:
         plt.close()
 
         insight = ask_data_scientist_agent("Explain what the missing value heatmap reveals in simple terms.")
-        insights.append(insight)
+        insights.append("Missing Value Insight:\n" + insight)
+        st.markdown(f"**AI Insight:** {insight}")
 
         num_cols = df.select_dtypes(include=np.number).columns
         cat_cols = df.select_dtypes(include='object').columns
@@ -188,6 +189,7 @@ if uploaded_file:
             summary = df[col].describe().to_string()
             insight = ask_data_scientist_agent(f"Explain histogram of '{col}' in simple English. Stats:\n{summary}")
             insights.append(f"{col} Histogram Insight:\n" + insight)
+            st.markdown(f"**{col} Histogram Insight:** {insight}")
 
         for col in num_cols:
             fig, ax = plt.subplots()
@@ -198,6 +200,7 @@ if uploaded_file:
             plt.close()
             insight = ask_data_scientist_agent(f"What does the box plot of '{col}' reveal in simple words?")
             insights.append(f"{col} Box Plot Insight:\n" + insight)
+            st.markdown(f"**{col} Box Plot Insight:** {insight}")
 
         for col in cat_cols:
             fig, ax = plt.subplots()
@@ -208,6 +211,7 @@ if uploaded_file:
             plt.close()
             insight = ask_data_scientist_agent(f"Explain the bar chart of column '{col}' for a client.")
             insights.append(f"{col} Bar Chart Insight:\n" + insight)
+            st.markdown(f"**{col} Bar Chart Insight:** {insight}")
 
             fig, ax = plt.subplots()
             df[col].value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90)
@@ -218,6 +222,15 @@ if uploaded_file:
             plt.close()
             insight = ask_data_scientist_agent(f"Explain pie chart of '{col}' in client-friendly language.")
             insights.append(f"{col} Pie Chart Insight:\n" + insight)
+            st.markdown(f"**{col} Pie Chart Insight:** {insight}")
+
+        # Add all insights as a conclusion page in the PDF
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        ax.axis('off')
+        full_insight_text = "\n\n".join(insights)
+        ax.text(0.01, 0.99, "AI Insights Summary (Simple English):\n\n" + full_insight_text, fontsize=10, va='top', wrap=True)
+        pdf.savefig(fig)
+        plt.close()
 
     problem_detected = df.isnull().sum().any() or df.select_dtypes(include=np.number).apply(lambda x: ((x - x.mean())/x.std()).abs().gt(3).sum()).sum() > 0
 
