@@ -1,4 +1,4 @@
-# ✅ Full Agentic + Multi-Agent AutoML System with Chat + EDA Email Notifications with AI Insight + Single PDF
+# ✅ Full Agentic + Multi-Agent AutoML System with Chat + EDA Email Notifications + PDF with AI Insights
 
 import streamlit as st
 import pandas as pd
@@ -9,9 +9,7 @@ import smtplib
 import seaborn as sns
 import matplotlib.pyplot as plt
 import os
-
 from email.message import EmailMessage
-from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
 from sklearn.metrics import accuracy_score, r2_score
@@ -24,6 +22,7 @@ from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
 from sklearn.svm import SVR, SVC
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, ComplementNB
 from imblearn.over_sampling import SMOTE
+from matplotlib.backends.backend_pdf import PdfPages
 import xgboost as xgb
 
 # === Together AI ===
@@ -45,7 +44,7 @@ def ask_agent(prompt, model, key=0):
     )
     if response.status_code == 200:
         return response.json()["choices"][0]["message"]["content"]
-    return f"Error: {response.text}"
+    return "AI Insight unavailable."
 
 def ask_data_scientist_agent(prompt):
     return ask_agent(f"[DATA SCIENTIST] {prompt}", "mistralai/Mistral-7B-Instruct-v0.1", key=0)
@@ -122,10 +121,8 @@ class AutoMLAgent:
             if self.classification and len(np.unique(y_train)) > 2:
                 sampler = SMOTE()
                 X_train, y_train = sampler.fit_resample(X_train, y_train)
-
             X_train = self.scaler.fit_transform(X_train)
             X_test = self.scaler.transform(X_test)
-
             for name, model in self.models.items():
                 try:
                     model.fit(X_train, y_train)
@@ -144,13 +141,13 @@ class AutoMLAgent:
                         self.best_info = info
                 except Exception:
                     continue
-
         return pd.DataFrame(self.results).sort_values(by="Score", ascending=False), self.best_info
 
     def save_best_model(self):
         with open("best_model.pkl", "wb") as f:
             pickle.dump(self.best_model, f)
 
+# === Streamlit UI ===
 st.set_page_config(page_title="Agentic AutoML AI", layout="wide")
 st.title("🤖 Multi-Agent AutoML System with Email Intelligence")
 
@@ -160,107 +157,111 @@ if uploaded_file:
     st.subheader("📊 Dataset Preview")
     st.dataframe(df.head())
 
-    pdf_report_path = "eda_report.pdf"
-    with PdfPages(pdf_report_path) as pdf:
+    st.subheader("📉 Basic EDA")
+    st.write(df.describe())
+    st.write("Missing Values:")
+    st.write(df.isnull().sum())
 
-        st.subheader("📉 Basic EDA")
-        st.write(df.describe())
-        st.write("Missing Values:")
-        st.write(df.isnull().sum())
-
+    insights = []
+    pdf_path = "eda_report.pdf"
+    with PdfPages(pdf_path) as pdf:
         fig, ax = plt.subplots()
         sns.heatmap(df.isnull(), cbar=False, cmap="viridis", ax=ax)
         ax.set_title("Missing Data Visualization")
         pdf.savefig(fig)
+        plt.close()
 
-        col1, col2 = st.columns([2, 3])
-        with col1:
-            st.pyplot(fig)
-        with col2:
-            summary = ask_data_scientist_agent(
-                f"This is a missing value heatmap. Summary of dataset:\n{df.isnull().sum().to_string()}"
-            )
-            st.markdown("### 🧠 AI Insight on Missing Values")
-            st.write(summary)
+        insight = ask_data_scientist_agent("Explain what the missing value heatmap reveals in simple terms.")
+        insights.append(insight)
 
         num_cols = df.select_dtypes(include=np.number).columns
         cat_cols = df.select_dtypes(include='object').columns
 
-        if not num_cols.empty:
-            st.markdown("### 🔢 Numeric Feature Distributions")
-            for col in num_cols:
-                fig, ax = plt.subplots()
-                df[col].hist(ax=ax, bins=20, color='skyblue', edgecolor='black')
-                ax.set_title(f"Histogram of {col}")
-                pdf.savefig(fig)
-                col1, col2 = st.columns([2, 3])
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    summary = ask_data_scientist_agent(
-                        f"Analyze this histogram for '{col}'.\nStatistics:\n{df[col].describe()}"
-                    )
-                    st.markdown(f"### 🧠 AI Insight on {col}")
-                    st.write(summary)
+        for col in num_cols:
+            fig, ax = plt.subplots()
+            df[col].hist(ax=ax, bins=20, color='skyblue', edgecolor='black')
+            ax.set_title(f"Histogram of {col}")
+            pdf.savefig(fig)
+            plt.close()
+            summary = df[col].describe().to_string()
+            insight = ask_data_scientist_agent(f"Explain histogram of '{col}' in simple English. Stats:\n{summary}")
+            insights.append(f"{col} Histogram Insight:\n" + insight)
 
-            st.markdown("### 🧮 Box Plots (Outlier Detection)")
-            for col in num_cols:
-                fig, ax = plt.subplots()
-                sns.boxplot(data=df, x=col, ax=ax, color='lightcoral')
-                ax.set_title(f"Box Plot of {col}")
-                pdf.savefig(fig)
-                col1, col2 = st.columns([2, 3])
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    summary = ask_data_scientist_agent(
-                        f"Analyze outliers for '{col}' using this boxplot.\nStats:\n{df[col].describe()}"
-                    )
-                    st.markdown(f"### 🧠 AI Insight on {col} (Outliers)")
-                    st.write(summary)
+        for col in num_cols:
+            fig, ax = plt.subplots()
+            sns.boxplot(data=df, x=col, ax=ax, color='lightcoral')
+            ax.set_title(f"Box Plot of {col}")
+            pdf.savefig(fig)
+            plt.close()
+            insight = ask_data_scientist_agent(f"What does the box plot of '{col}' reveal in simple words?")
+            insights.append(f"{col} Box Plot Insight:\n" + insight)
 
-        if not cat_cols.empty:
-            st.markdown("### 🗾 Categorical Feature Breakdown")
-            for col in cat_cols:
-                fig, ax = plt.subplots()
-                df[col].value_counts().plot(kind='bar', ax=ax, color='lightgreen')
-                ax.set_title(f"Bar Chart of {col}")
-                pdf.savefig(fig)
-                col1, col2 = st.columns([2, 3])
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    summary = ask_data_scientist_agent(
-                        f"Analyze the frequency distribution of '{col}'.\nCounts:\n{df[col].value_counts()}"
-                    )
-                    st.markdown(f"### 🧠 AI Insight on {col} (Bar Chart)")
-                    st.write(summary)
+        for col in cat_cols:
+            fig, ax = plt.subplots()
+            df[col].value_counts().plot(kind='bar', ax=ax, color='lightgreen')
+            ax.set_title(f"Bar Chart of {col}")
+            pdf.savefig(fig)
+            plt.close()
+            insight = ask_data_scientist_agent(f"Explain the bar chart of column '{col}' for a client.")
+            insights.append(f"{col} Bar Chart Insight:\n" + insight)
 
-                fig, ax = plt.subplots()
-                df[col].value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90)
-                ax.set_ylabel("")
-                ax.set_title(f"Pie Chart of {col}")
-                pdf.savefig(fig)
-                col1, col2 = st.columns([2, 3])
-                with col1:
-                    st.pyplot(fig)
-                with col2:
-                    summary = ask_data_scientist_agent(
-                        f"Interpret the pie chart for '{col}' category distribution."
-                    )
-                    st.markdown(f"### 🧠 AI Insight on {col} (Pie Chart)")
-                    st.write(summary)
+            fig, ax = plt.subplots()
+            df[col].value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90)
+            ax.set_ylabel("")
+            ax.set_title(f"Pie Chart of {col}")
+            pdf.savefig(fig)
+            plt.close()
+            insight = ask_data_scientist_agent(f"Explain pie chart of '{col}' in client-friendly language.")
+            insights.append(f"{col} Pie Chart Insight:\n" + insight)
 
-    if client_email:
+    problem_detected = df.isnull().sum().any() or df.select_dtypes(include=np.number).apply(lambda x: ((x - x.mean())/x.std()).abs().gt(3).sum()).sum() > 0
+
+    if problem_detected and client_email:
         eda_summary = """
 Dear Client,
 
-Our system has completed the initial EDA analysis. The full PDF report is attached.
+Our system has completed the initial analysis of your dataset. Here are the key observations:
 
-Please confirm if you'd like us to proceed with model training.
+- ❗ Potential data quality issues found (missing values or outliers)
+- 🧹 Visuals and insights attached in the PDF report
+
+Please confirm if you'd like us to proceed with data cleaning and model training.
 
 Regards,
 Akash
         """
-        send_email_report("Initial EDA PDF Report", eda_summary, client_email, [pdf_report_path])
-        st.info("📧 PDF EDA report emailed to client.")
+        send_email_report("Initial Data Quality Report", eda_summary, client_email, [pdf_path])
+        st.warning("Initial report emailed to client for confirmation before continuing.")
+
+        proceed = st.checkbox("✅ Client confirmed. Proceed with model training?")
+        if proceed:
+            target = st.selectbox("🎯 Select Target Variable", df.columns)
+            if target:
+                X = df.drop(columns=[target])
+                y = df[target]
+
+                agent = AutoMLAgent(X, y)
+                results_df, best_info = agent.run()
+
+                st.subheader("🏆 Model Leaderboard")
+                st.dataframe(results_df)
+
+                agent.save_best_model()
+                st.success(f"Best Model: {best_info['Model']} with score: {best_info['Score']}")
+
+                model_summary = f"""
+Dear Client,
+
+The AutoML process is complete. Here are the results:
+
+✅ Best Model: {best_info['Model']}
+📈 Score: {best_info['Score']}
+📊 Type: {best_info['Type']}
+🔎 Test Size: {best_info['Test Size']}
+
+Thank you for using our AI service.
+
+Regards,
+Akash
+"""
+                send_email_report("Final AutoML Model Report", model_summary, client_email)
