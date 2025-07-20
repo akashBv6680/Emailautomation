@@ -22,6 +22,7 @@ from sklearn.svm import SVR, SVC
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, ComplementNB
 from imblearn.over_sampling import SMOTE
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.gridspec import GridSpec
 import xgboost as xgb
 
 # === Together AI Keys ===
@@ -65,87 +66,6 @@ def send_email_report(subject, body, to, attachment_paths=None):
         smtp.login(st.secrets["EMAIL_ADDRESS"], st.secrets["EMAIL_PASSWORD"])
         smtp.send_message(msg)
 
-class AutoMLAgent:
-    def __init__(self, X, y):
-        self.X_raw = X.copy()
-        self.X = pd.get_dummies(X)
-        self.y = y
-        self.classification = self._detect_task_type()
-        self.models = self._load_models()
-        self.scaler = StandardScaler()
-        self.best_model = None
-        self.best_score = -np.inf
-        self.best_info = {}
-        self.results = []
-
-    def _detect_task_type(self):
-        return self.y.dtype == 'object' or len(np.unique(self.y)) <= 20
-
-    def _load_models(self):
-        return {
-            "classification": {
-                "Logistic Regression": LogisticRegression(max_iter=1000),
-                "Decision Tree": DecisionTreeClassifier(),
-                "Random Forest": RandomForestClassifier(),
-                "Gradient Boosting": GradientBoostingClassifier(),
-                "Extra Trees": ExtraTreesClassifier(),
-                "AdaBoost": AdaBoostClassifier(),
-                "KNN": KNeighborsClassifier(),
-                "SVC": SVC(),
-                "Naive Bayes (Gaussian)": GaussianNB(),
-                "Naive Bayes (Multinomial)": MultinomialNB(),
-                "Naive Bayes (Complement)": ComplementNB(),
-                "XGBoost": xgb.XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
-            },
-            "regression": {
-                "Linear Regression": LinearRegression(),
-                "Lasso": Lasso(),
-                "Ridge": Ridge(),
-                "ElasticNet": ElasticNet(),
-                "Decision Tree": DecisionTreeRegressor(),
-                "Random Forest": RandomForestRegressor(),
-                "Gradient Boosting": GradientBoostingRegressor(),
-                "Extra Trees": ExtraTreesRegressor(),
-                "AdaBoost": AdaBoostRegressor(),
-                "KNN": KNeighborsRegressor(),
-                "SVR": SVR(),
-                "XGBoost": xgb.XGBRegressor(),
-                "Polynomial Linear Regression": make_pipeline(PolynomialFeatures(2), LinearRegression())
-            }
-        }["classification" if self.classification else "regression"]
-
-    def run(self):
-        for test_size in [0.1, 0.2, 0.3]:
-            X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, test_size=test_size, random_state=42)
-            if self.classification and len(np.unique(y_train)) > 2:
-                sampler = SMOTE()
-                X_train, y_train = sampler.fit_resample(X_train, y_train)
-            X_train = self.scaler.fit_transform(X_train)
-            X_test = self.scaler.transform(X_test)
-            for name, model in self.models.items():
-                try:
-                    model.fit(X_train, y_train)
-                    preds = model.predict(X_test)
-                    score = accuracy_score(y_test, preds) if self.classification else r2_score(y_test, preds)
-                    info = {
-                        "Model": name,
-                        "Score": round(score, 4),
-                        "Test Size": test_size,
-                        "Type": "Classification" if self.classification else "Regression"
-                    }
-                    self.results.append(info)
-                    if score > self.best_score:
-                        self.best_score = score
-                        self.best_model = model
-                        self.best_info = info
-                except Exception:
-                    continue
-        return pd.DataFrame(self.results).sort_values(by="Score", ascending=False), self.best_info
-
-    def save_best_model(self):
-        with open("best_model.pkl", "wb") as f:
-            pickle.dump(self.best_model, f)
-
 # === Streamlit UI ===
 st.set_page_config(page_title="Agentic AutoML AI", layout="wide")
 st.title("🤖 Multi-Agent AutoML System with Email Intelligence")
@@ -163,84 +83,82 @@ if uploaded_file:
 
     insights = []
     pdf_path = "eda_report.pdf"
+
     with PdfPages(pdf_path) as pdf:
+        from matplotlib.gridspec import GridSpec
+
         fig, ax = plt.subplots()
         sns.heatmap(df.isnull(), cbar=False, cmap="viridis", ax=ax)
         ax.set_title("Missing Data Visualization")
         pdf.savefig(fig)
         st.pyplot(fig)
         plt.close()
-
         insight = ask_data_scientist_agent("Explain what the missing value heatmap reveals in simple terms.")
-        insights.append("Missing Value Insight:\n" + insight)
+        insights.append(("Missing Data Visualization", insight))
         st.markdown(f"**AI Insight:** {insight}")
 
         num_cols = df.select_dtypes(include=np.number).columns
         cat_cols = df.select_dtypes(include='object').columns
 
         for col in num_cols:
-            fig, ax = plt.subplots()
-            df[col].hist(ax=ax, bins=20, color='skyblue', edgecolor='black')
-            ax.set_title(f"Histogram of {col}")
-            pdf.savefig(fig)
-            st.pyplot(fig)
-            plt.close()
-            summary = df[col].describe().to_string()
-            insight = ask_data_scientist_agent(f"Explain histogram of '{col}' in simple English. Stats:\n{summary}")
-            insights.append(f"{col} Histogram Insight:\n" + insight)
-            st.markdown(f"**{col} Histogram Insight:** {insight}")
+            for chart_type in ["hist", "box"]:
+                fig = plt.figure(figsize=(11, 5))
+                gs = GridSpec(1, 2, width_ratios=[2, 1])
+                ax1 = fig.add_subplot(gs[0])
+                if chart_type == "hist":
+                    df[col].hist(ax=ax1, bins=20, color='skyblue', edgecolor='black')
+                    ax1.set_title(f"Histogram of {col}")
+                    summary = df[col].describe().to_string()
+                    insight = ask_data_scientist_agent(f"Explain histogram of '{col}' in simple English. Stats:\n{summary}")
+                else:
+                    sns.boxplot(data=df, x=col, ax=ax1, color='lightcoral')
+                    ax1.set_title(f"Box Plot of {col}")
+                    insight = ask_data_scientist_agent(f"What does the box plot of '{col}' reveal in simple words?")
 
-        for col in num_cols:
-            fig, ax = plt.subplots()
-            sns.boxplot(data=df, x=col, ax=ax, color='lightcoral')
-            ax.set_title(f"Box Plot of {col}")
-            pdf.savefig(fig)
-            st.pyplot(fig)
-            plt.close()
-            insight = ask_data_scientist_agent(f"What does the box plot of '{col}' reveal in simple words?")
-            insights.append(f"{col} Box Plot Insight:\n" + insight)
-            st.markdown(f"**{col} Box Plot Insight:** {insight}")
+                insights.append((f"{chart_type.title()} of {col}", insight))
+                ax2 = fig.add_subplot(gs[1])
+                ax2.axis('off')
+                ax2.text(0, 1, f"• {insight}", wrap=True, fontsize=10, verticalalignment='top')
+                pdf.savefig(fig)
+                plt.close()
+                st.pyplot(fig)
+                st.markdown(f"**{col} {chart_type.title()} Insight:** {insight}")
 
         for col in cat_cols:
-            fig, ax = plt.subplots()
-            df[col].value_counts().plot(kind='bar', ax=ax, color='lightgreen')
-            ax.set_title(f"Bar Chart of {col}")
-            pdf.savefig(fig)
-            st.pyplot(fig)
-            plt.close()
-            insight = ask_data_scientist_agent(f"Explain the bar chart of column '{col}' for a client.")
-            insights.append(f"{col} Bar Chart Insight:\n" + insight)
-            st.markdown(f"**{col} Bar Chart Insight:** {insight}")
+            for chart_type in ["bar", "pie"]:
+                fig = plt.figure(figsize=(11, 5))
+                gs = GridSpec(1, 2, width_ratios=[2, 1])
+                ax1 = fig.add_subplot(gs[0])
+                if chart_type == "bar":
+                    df[col].value_counts().plot(kind='bar', ax=ax1, color='lightgreen')
+                    ax1.set_title(f"Bar Chart of {col}")
+                    insight = ask_data_scientist_agent(f"Explain the bar chart of column '{col}' for a client.")
+                else:
+                    df[col].value_counts().plot(kind='pie', ax=ax1, autopct='%1.1f%%', startangle=90)
+                    ax1.set_ylabel("")
+                    ax1.set_title(f"Pie Chart of {col}")
+                    insight = ask_data_scientist_agent(f"Explain pie chart of '{col}' in client-friendly language.")
 
-            fig, ax = plt.subplots()
-            df[col].value_counts().plot(kind='pie', ax=ax, autopct='%1.1f%%', startangle=90)
-            ax.set_ylabel("")
-            ax.set_title(f"Pie Chart of {col}")
-            pdf.savefig(fig)
-            st.pyplot(fig)
-            plt.close()
-            insight = ask_data_scientist_agent(f"Explain pie chart of '{col}' in client-friendly language.")
-            insights.append(f"{col} Pie Chart Insight:\n" + insight)
-            st.markdown(f"**{col} Pie Chart Insight:** {insight}")
+                insights.append((f"{chart_type.title()} of {col}", insight))
+                ax2 = fig.add_subplot(gs[1])
+                ax2.axis('off')
+                ax2.text(0, 1, f"• {insight}", wrap=True, fontsize=10, verticalalignment='top')
+                pdf.savefig(fig)
+                plt.close()
+                st.pyplot(fig)
+                st.markdown(f"**{col} {chart_type.title()} Insight:** {insight}")
 
-        # Add insights summary page to PDF
+        # Final Summary Page
         fig, ax = plt.subplots(figsize=(8.5, 11))
         ax.axis('off')
-        full_insight_text = "\n\n".join(insights)
-        ax.text(0.01, 0.99, "AI Insights Summary (Simple English):\n\n" + full_insight_text, fontsize=10, va='top', wrap=True)
+        summary_text = "\n\n".join([f"• {title}: {insight}" for title, insight in insights])
+        ax.text(0.01, 0.99, "📄 Summary of Visual Insights:\n\n" + summary_text, fontsize=10, va='top', wrap=True)
         pdf.savefig(fig)
         plt.close()
 
-    # === Display AI Insights on Right Side ===
-    st.subheader("🧠 AI Insights Summary")
-    col1, col2 = st.columns([2, 3])
-    with col2:
-        for insight in insights:
-            st.markdown(f"📝 {insight}")
-
-    # Optional PDF download
     with open(pdf_path, "rb") as f:
         st.download_button("📥 Download Full AI Insights Report (PDF)", f, file_name="EDA_AI_Insights_Report.pdf")
+
 
     problem_detected = df.isnull().sum().any() or df.select_dtypes(include=np.number).apply(lambda x: ((x - x.mean())/x.std()).abs().gt(3).sum()).sum() > 0
 
