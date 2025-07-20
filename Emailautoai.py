@@ -53,7 +53,11 @@ def simplify_insight(raw_text):
     return '\n'.join([f"• {line}" for line in simple])
 
 def ask_data_scientist_agent(prompt):
-    return ask_agent(f"[DATA SCIENTIST] {prompt} Use only simple English. Provide only 3 short, clear bullet points as the result.", "mistralai/Mistral-7B-Instruct-v0.1", key=0)
+    full_prompt = (
+        f"You are a data scientist. Based on this chart or visualization: {prompt}. "
+        f"Please extract only the 3 most useful insights. Keep the language very simple and short, suitable for a non-technical client. Do not include any definition or explanation of chart type."
+    )
+    return ask_agent(full_prompt, "mistralai/Mistral-7B-Instruct-v0.1", key=0)
 
 def send_email_report(subject, body, to, attachment_paths=None):
     msg = EmailMessage()
@@ -97,7 +101,7 @@ if uploaded_file:
         pdf.savefig(fig)
         st.pyplot(fig)
         plt.close()
-        raw_insight = ask_data_scientist_agent("Explain the missing value heatmap for a client.")
+        raw_insight = ask_data_scientist_agent("missing value heatmap")
         insight = simplify_insight(raw_insight)
         insights.append(("Missing Data Visualization", insight))
         st.markdown(f"**AI Insight:**\n{insight}")
@@ -114,11 +118,11 @@ if uploaded_file:
                     df[col].hist(ax=ax1, bins=20, color='skyblue', edgecolor='black')
                     ax1.set_title(f"Histogram of {col}")
                     summary = df[col].describe().to_string()
-                    raw_insight = ask_data_scientist_agent(f"Explain histogram of '{col}' in simple words. Stats:\n{summary}")
+                    raw_insight = ask_data_scientist_agent(f"Histogram for {col}. Stats:\n{summary}")
                 else:
                     sns.boxplot(data=df, x=col, ax=ax1, color='lightcoral')
                     ax1.set_title(f"Box Plot of {col}")
-                    raw_insight = ask_data_scientist_agent(f"What does the box plot of '{col}' show?")
+                    raw_insight = ask_data_scientist_agent(f"Box plot for {col}")
 
                 insight = simplify_insight(raw_insight)
                 insights.append((f"{chart_type.title()} of {col}", insight))
@@ -138,12 +142,12 @@ if uploaded_file:
                 if chart_type == "bar":
                     df[col].value_counts().plot(kind='bar', ax=ax1, color='lightgreen')
                     ax1.set_title(f"Bar Chart of {col}")
-                    raw_insight = ask_data_scientist_agent(f"Explain bar chart of column '{col}' in 3 short simple points.")
+                    raw_insight = ask_data_scientist_agent(f"Bar chart for {col}")
                 else:
                     df[col].value_counts().plot(kind='pie', ax=ax1, autopct='%1.1f%%', startangle=90)
                     ax1.set_ylabel("")
                     ax1.set_title(f"Pie Chart of {col}")
-                    raw_insight = ask_data_scientist_agent(f"Explain pie chart of column '{col}' for a client.")
+                    raw_insight = ask_data_scientist_agent(f"Pie chart for {col}")
 
                 insight = simplify_insight(raw_insight)
                 insights.append((f"{chart_type.title()} of {col}", insight))
@@ -164,6 +168,7 @@ if uploaded_file:
 
     with open(pdf_path, "rb") as f:
         st.download_button("📥 Download Full AI Insights Report (PDF)", f, file_name="EDA_AI_Insights_Report.pdf")
+
 
 
 
