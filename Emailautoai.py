@@ -24,6 +24,7 @@ from imblearn.over_sampling import SMOTE
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.gridspec import GridSpec
 import xgboost as xgb
+import textwrap
 
 # === Together AI Keys ===
 together_api_keys = [
@@ -46,8 +47,13 @@ def ask_agent(prompt, model, key=0):
         return response.json()["choices"][0]["message"]["content"]
     return "AI Insight unavailable."
 
+def simplify_insight(raw_text):
+    bullets = [line.strip("-• ") for line in raw_text.split("\n") if line.strip() and not any(x in line.lower() for x in ["chart is", "represents", "graph", "x-axis", "y-axis", "category"])]
+    simple = bullets[:3] if len(bullets) >= 3 else bullets
+    return '\n'.join([f"• {line}" for line in simple])
+
 def ask_data_scientist_agent(prompt):
-    return ask_agent(f"[DATA SCIENTIST] {prompt}", "mistralai/Mistral-7B-Instruct-v0.1", key=0)
+    return ask_agent(f"[DATA SCIENTIST] {prompt} Use only simple English. Provide only 3 short, clear bullet points as the result.", "mistralai/Mistral-7B-Instruct-v0.1", key=0)
 
 def send_email_report(subject, body, to, attachment_paths=None):
     msg = EmailMessage()
@@ -85,17 +91,16 @@ if uploaded_file:
     pdf_path = "eda_report.pdf"
 
     with PdfPages(pdf_path) as pdf:
-        from matplotlib.gridspec import GridSpec
-
         fig, ax = plt.subplots()
         sns.heatmap(df.isnull(), cbar=False, cmap="viridis", ax=ax)
         ax.set_title("Missing Data Visualization")
         pdf.savefig(fig)
         st.pyplot(fig)
         plt.close()
-        insight = ask_data_scientist_agent("Explain what the missing value heatmap reveals in simple terms.")
+        raw_insight = ask_data_scientist_agent("Explain the missing value heatmap for a client.")
+        insight = simplify_insight(raw_insight)
         insights.append(("Missing Data Visualization", insight))
-        st.markdown(f"**AI Insight:** {insight}")
+        st.markdown(f"**AI Insight:**\n{insight}")
 
         num_cols = df.select_dtypes(include=np.number).columns
         cat_cols = df.select_dtypes(include='object').columns
@@ -109,20 +114,21 @@ if uploaded_file:
                     df[col].hist(ax=ax1, bins=20, color='skyblue', edgecolor='black')
                     ax1.set_title(f"Histogram of {col}")
                     summary = df[col].describe().to_string()
-                    insight = ask_data_scientist_agent(f"Explain histogram of '{col}' in simple English. Stats:\n{summary}")
+                    raw_insight = ask_data_scientist_agent(f"Explain histogram of '{col}' in simple words. Stats:\n{summary}")
                 else:
                     sns.boxplot(data=df, x=col, ax=ax1, color='lightcoral')
                     ax1.set_title(f"Box Plot of {col}")
-                    insight = ask_data_scientist_agent(f"What does the box plot of '{col}' reveal in simple words?")
+                    raw_insight = ask_data_scientist_agent(f"What does the box plot of '{col}' show?")
 
+                insight = simplify_insight(raw_insight)
                 insights.append((f"{chart_type.title()} of {col}", insight))
                 ax2 = fig.add_subplot(gs[1])
                 ax2.axis('off')
-                ax2.text(0, 1, f"• {insight}", wrap=True, fontsize=10, verticalalignment='top')
+                ax2.text(0, 1, insight, wrap=True, fontsize=10, verticalalignment='top')
                 pdf.savefig(fig)
                 plt.close()
                 st.pyplot(fig)
-                st.markdown(f"**{col} {chart_type.title()} Insight:** {insight}")
+                st.markdown(f"**{col} {chart_type.title()} Insight:**\n{insight}")
 
         for col in cat_cols:
             for chart_type in ["bar", "pie"]:
@@ -132,32 +138,33 @@ if uploaded_file:
                 if chart_type == "bar":
                     df[col].value_counts().plot(kind='bar', ax=ax1, color='lightgreen')
                     ax1.set_title(f"Bar Chart of {col}")
-                    insight = ask_data_scientist_agent(f"Explain the bar chart of column '{col}' for a client.")
+                    raw_insight = ask_data_scientist_agent(f"Explain bar chart of column '{col}' in 3 short simple points.")
                 else:
                     df[col].value_counts().plot(kind='pie', ax=ax1, autopct='%1.1f%%', startangle=90)
                     ax1.set_ylabel("")
                     ax1.set_title(f"Pie Chart of {col}")
-                    insight = ask_data_scientist_agent(f"Explain pie chart of '{col}' in client-friendly language.")
+                    raw_insight = ask_data_scientist_agent(f"Explain pie chart of column '{col}' for a client.")
 
+                insight = simplify_insight(raw_insight)
                 insights.append((f"{chart_type.title()} of {col}", insight))
                 ax2 = fig.add_subplot(gs[1])
                 ax2.axis('off')
-                ax2.text(0, 1, f"• {insight}", wrap=True, fontsize=10, verticalalignment='top')
+                ax2.text(0, 1, insight, wrap=True, fontsize=10, verticalalignment='top')
                 pdf.savefig(fig)
                 plt.close()
                 st.pyplot(fig)
-                st.markdown(f"**{col} {chart_type.title()} Insight:** {insight}")
+                st.markdown(f"**{col} {chart_type.title()} Insight:**\n{insight}")
 
-        # Final Summary Page
         fig, ax = plt.subplots(figsize=(8.5, 11))
         ax.axis('off')
-        summary_text = "\n\n".join([f"• {title}: {insight}" for title, insight in insights])
+        summary_text = "\n\n".join([f"{insight}" for _, insight in insights])
         ax.text(0.01, 0.99, "📄 Summary of Visual Insights:\n\n" + summary_text, fontsize=10, va='top', wrap=True)
         pdf.savefig(fig)
         plt.close()
 
     with open(pdf_path, "rb") as f:
         st.download_button("📥 Download Full AI Insights Report (PDF)", f, file_name="EDA_AI_Insights_Report.pdf")
+
 
 
     problem_detected = df.isnull().sum().any() or df.select_dtypes(include=np.number).apply(lambda x: ((x - x.mean())/x.std()).abs().gt(3).sum()).sum() > 0
